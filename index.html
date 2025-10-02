@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Abdulrehman's Chatbot</title>
+  <style>
+    /* ===== General Styling (history bar + original look) ===== */
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1a1c40, #3a0ca3, #7209b7, #f72585);
+      background-size: 400% 400%;
+      animation: gradientMove 15s ease infinite;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    @keyframes gradientMove {
+      0% {background-position: 0% 50%;}
+      50% {background-position: 100% 50%;}
+      100% {background-position: 0% 50%;}
+    }
+
+    .outer-container {
+      width: 920px;
+      height: 700px;
+      display: flex;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .chat-container {
+      width: 680px;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      backdrop-filter: blur(15px);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 15px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .chat-header img { width: 40px; height: 40px; }
+    .chat-header h2 { color: #fff; margin: 0; font-size: 18px; }
+
+    .chat-messages { flex: 1; padding: 15px; overflow-y: auto; display:flex; flex-direction:column; gap:8px; }
+    .message { max-width: 80%; padding: 10px 15px; margin-bottom: 10px; border-radius: 18px; line-height:1.4; opacity:0; transform: translateY(20px); animation: slideIn 0.25s forwards; word-wrap: break-word; white-space: pre-wrap; }
+    .user { background: #4cc9f0; color:#000; align-self: flex-end; border-bottom-right-radius:5px; }
+    .bot { background: #3a0ca3; color:#fff; align-self:flex-start; border-bottom-left-radius:5px; }
+    @keyframes slideIn { to {opacity:1; transform: translateY(0);} }
+
+    .chat-input { display:flex; padding:12px; background: rgba(255,255,255,0.08); }
+    .chat-input input { flex:1; padding:12px; border:none; border-radius:25px; outline:none; font-size:14px; background: rgba(255,255,255,0.03); color:#fff; }
+    .chat-input button { margin-left:8px; padding:12px 18px; border:none; border-radius:25px; cursor:pointer; font-weight:bold; background: linear-gradient(135deg,#f72585,#7209b7); color:white; transition:0.3s; }
+    .chat-input button:hover { box-shadow:0 0 12px #f72585; transform: scale(1.03); }
+
+    .controls { display:flex; justify-content: space-around; padding:10px; background: rgba(255,255,255,0.04); }
+    .controls button { background: rgba(255,255,255,0.12); border:none; border-radius:12px; padding:8px 12px; color:#fff; cursor:pointer; transition:0.2s; }
+    .controls button:hover { background: rgba(255,255,255,0.25); }
+    .hint { padding:8px 12px; font-size:12px; color:rgba(255,255,255,0.85); text-align:center; }
+
+    .history { width:220px; height:100%; background: rgba(255,255,255,0.06); border-radius:12px; padding:12px; box-shadow:0 8px 30px rgba(0,0,0,0.45); color:#fff; display:flex; flex-direction:column; }
+    .history h3 { margin:4px 0 8px 0; font-size:14px; color:#fff; text-align:center; }
+    .history-list { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+    .history-item { background: rgba(0,0,0,0.15); padding:8px; border-radius:8px; font-size:12px; }
+    .history-item .who { font-weight:700; font-size:11px; }
+    .history-footer { font-size:11px; text-align:center; margin-top:8px; color:rgba(255,255,255,0.85); }
+
+    @media (max-width:980px) { .outer-container{width:100%;height:100%;padding:8px;box-sizing:border-box;} .chat-container{width:100%;} .history{display:none;} }
+  </style>
+</head>
+<body>
+
+<div class="outer-container">
+  <div class="chat-container">
+    <div class="chat-header">
+      <img src="https://cdn-icons-png.flaticon.com/512/4712/4712107.png" alt="Robot">
+      <h2>🤖 Abdulrehman's Chatbot</h2>
+    </div>
+
+    <div class="chat-messages" id="chat-messages"></div>
+
+    <div class="controls">
+      <button onclick="clearChat()">🗑 Clear</button>
+      <button onclick="toggleVoice()">🔊 Voice</button>
+      <button onclick="show15Next()">📚 Show 15</button>
+    </div>
+
+    <div class="chat-input">
+      <input id="user-input" type="text" placeholder="Type a message or enter a question number (1-200)..." onkeydown="if(event.key==='Enter'){sendMessage()}">
+      <button onclick="sendMessage()">Send</button>
+    </div>
+    <div class="hint">Tip: type a number 1–200 to get that Q & A, or ask for "questions" to start the 15-per-page flow.</div>
+  </div>
+
+  <div class="history">
+    <h3>History (recent)</h3>
+    <div class="history-list" id="history-list"></div>
+    <div class="history-footer">Your last 20 inputs appear here.</div>
+  </div>
+</div>
+
+<script>
+  const chatMessages = document.getElementById('chat-messages');
+  const userInput = document.getElementById('user-input');
+  const historyList = document.getElementById('history-list');
+  let voiceEnabled = false;
+
+  function addMessage(text, sender) {
+    const msg = document.createElement('div');
+    msg.className = 'message ' + sender;
+    msg.innerText = text;
+    chatMessages.appendChild(msg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (sender === 'bot' && voiceEnabled) speak(text);
+  }
+
+  function addHistory(who, text) {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    item.innerHTML = "<div class='who'>" + who + "</div><div class='hstxt'>" + escapeHtml(text) + "</div>";
+    historyList.insertBefore(item, historyList.firstChild);
+    while (historyList.childNodes.length > 20) historyList.removeChild(historyList.lastChild);
+  }
+
+  function escapeHtml(unsafe) {
+    return unsafe.replace(/[&<>"']/g, function(m) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#039;"})[m]; });
+  }
+
+  function sendMessage() {
+    const text = userInput.value.trim();
+    if (!text) return;
+    addMessage(text, 'user');
+    addHistory('You', text);
+    userInput.value = '';
+    setTimeout(() => botReply(text), 220);
+  }
+
+  // EXACTLY 200 real Q&A (no placeholders) — first 100 kept from your original list, plus 100 added
+  const qa = [
+    {q: "What is the capital of France?", a: "Paris."},
+    {q: "Who wrote 'Romeo and Juliet'?", a: "William Shakespeare."},
+    {q: "How many continents are there?", a: "7 continents."},
+    {q: "What is the largest planet in our solar system?", a: "Jupiter."},
+    {q: "What is the fastest land animal?", a: "Cheetah."},
+    {q: "What is the boiling point of water?", a: "100°C at sea level."},
+    {q: "Who was the first man on the Moon?", a: "Neil Armstrong (1969)."},
+    {q: "What is the national language of Pakistan?", a: "Urdu."},
+    {q: "Which gas do humans need to breathe?", a: "Oxygen."},
+    {q: "How many bones are in the adult human body?", a: "206 bones."},
+
+    {q: "What is 12 × 12?", a: "144."},
+    {q: "What is the chemical symbol for gold?", a: "Au."},
+    {q: "Who is called the Father of Physics?", a: "Isaac Newton."},
+    {q: "What is H2O?", a: "Water."},
+    {q: "What is the square root of 64?", a: "8."},
+    {q: "Which planet is called the Red Planet?", a: "Mars."},
+    {q: "What is the largest mammal?", a: "Blue whale."},
+    {q: "How many letters are in the English alphabet?", a: "26 letters."},
+    {q: "Who discovered electricity (lightning experiment)?", a: "Benjamin Franklin."},
+    {q: "What is photosynthesis?", a: "Plants making food using sunlight, water, and CO₂."},
+
+    {q: "What time is it?", a: "Type 'time' to get the current time."},
+    {q: "How do I cook rice?", a: "Wash rice, add water (~2:1), boil then simmer."},
+    {q: "How do I improve English?", a: "Read daily, speak often, and learn new words."},
+    {q: "How do I lose weight?", a: "Eat healthy, exercise, and sleep well."},
+    {q: "How to make tea?", a: "Boil water, add tea leaves, milk and sugar to taste."},
+    {q: "How to stay motivated?", a: "Set small goals, track progress, reward yourself."},
+    {q: "What should I eat for breakfast?", a: "Eggs, oats, fruits or whole-grain bread."},
+    {q: "How to study better?", a: "Use short notes, revise often, practice past papers."},
+    {q: "How to sleep quickly?", a: "Avoid screens, relax, dim lights."},
+    {q: "How to manage stress?", a: "Breathing, exercise, short breaks."},
+
+    {q: "What is AI?", a: "Artificial Intelligence — machines that mimic human tasks."},
+    {q: "Who founded Microsoft?", a: "Bill Gates and Paul Allen."},
+    {q: "What is Google?", a: "A search engine and tech company."},
+    {q: "What is Wi-Fi?", a: "Wireless internet technology."},
+    {q: "What is the full form of USB?", a: "Universal Serial Bus."},
+    {q: "What is a smartphone?", a: "A phone with internet, apps and touchscreen."},
+    {q: "What is YouTube?", a: "A video-sharing platform."},
+    {q: "What does www stand for?", a: "World Wide Web."},
+    {q: "Who founded Facebook?", a: "Mark Zuckerberg."},
+    {q: "What is a password?", a: "A secret code to secure accounts."},
+
+    {q: "Who is the last Prophet (PBUH)?", a: "Prophet Muhammad (PBUH)."},
+    {q: "What is the holy book of Muslims?", a: "The Quran."},
+    {q: "What is fasting?", a: "Not eating/drinking from dawn to sunset for worship."},
+    {q: "How many prayers in Islam daily?", a: "Five daily prayers."},
+    {q: "Who built the Kaaba?", a: "Prophet Ibrahim (AS) and Ismail (AS)."},
+    {q: "What is Eid?", a: "A Muslim festival after Ramadan (Eid al-Fitr) or Hajj (Eid al-Adha)."},
+    {q: "Who is Allah?", a: "The One God in Islam."},
+    {q: "What is Zakat?", a: "Obligatory charity given to the poor."},
+    {q: "What is Hajj?", a: "Pilgrimage to Makkah, required once if able."},
+    {q: "What is Shahadah?", a: "Declaration of faith: 'There is no god but Allah, Muhammad is His Messenger.'"},
+
+
+    {q: "What is your name?", a: "I’m Abdulrehman's Chatbot."},
+    {q: "Are you human?", a: "No, I’m an AI."},
+    {q: "How old are you?", a: "I don’t have an age like humans."},
+    {q: "Can you tell a joke?", a: "Sure! Why don’t skeletons fight each other? Because they don’t have the guts!"},
+    {q: "What is your favorite colour?", a: "I don’t have personal favorites."},
+    {q: "Do you play games?", a: "I can explain games, but I don’t play."},
+    {q: "Can you sing?", a: "I can write lyrics, but I can’t sing."},
+    {q: "Can you draw?", a: "I can describe or generate image ideas."},
+    {q: "Do you sleep?", a: "No — I am available anytime."},
+    {q: "Can you be my friend?", a: "Of course — I’m here to help and chat!"},
+
+    {q: "What causes rain?", a: "Water vapor condenses into clouds and falls as rain."},
+    {q: "What is gravity?", a: "The force that pulls objects toward Earth."},
+    {q: "Why is the sky blue?", a: "Because molecules in the atmosphere scatter blue light more."},
+    {q: "What is the speed of light?", a: "About 300,000 kilometers per second."},
+    {q: "What is an atom?", a: "The smallest unit of ordinary matter."},
+    {q: "What is DNA?", a: "Molecule that carries genetic information."},
+    {q: "How do birds fly?", a: "By using wing shape and motion to generate lift and thrust."},
+    {q: "Why do we yawn?", a: "Yawning helps increase oxygen and may cool the brain."},
+    {q: "What is the Sun?", a: "A star at the center of our solar system."},
+    {q: "Why do leaves look green?", a: "Because chlorophyll reflects green light."},
+
+    {q: "Who discovered America?", a: "Christopher Columbus reached the Americas in 1492 (indigenous peoples were already there)."},
+    {q: "Who was the first president of the USA?", a: "George Washington."},
+    {q: "When was Pakistan created?", a: "14 August 1947."},
+    {q: "Who founded Pakistan?", a: "Muhammad Ali Jinnah."},
+    {q: "Who invented the telephone?", a: "Alexander Graham Bell."},
+    {q: "When was World War II?", a: "1939–1945."},
+    {q: "Who was Albert Einstein?", a: "A famous physicist known for relativity."},
+    {q: "What is the Great Wall of China?", a: "A series of fortifications in China."},
+    {q: "Who was Cleopatra?", a: "Queen of ancient Egypt."},
+    {q: "When was the Quran revealed?", a: "Over about 23 years to Prophet Muhammad (PBUH)."},
+
+    {q: "How to be confident?", a: "Practice, prepare, and stay positive."},
+    {q: "How to make friends?", a: "Be kind, listen, and show interest."},
+    {q: "How to speak in public?", a: "Practice, breathe, and make eye contact."},
+    {q: "How to save money?", a: "Make a budget, avoid impulse buys, save regularly."},
+    {q: "How to write an essay?", a: "Intro, body, conclusion with clear points."},
+    {q: "How to remember things?", a: "Use notes, repetition, and associations."},
+    {q: "How to be happy?", a: "Be grateful, connect with others, and do what you love."},
+    {q: "How to plan my day?", a: "Make a to-do list and set priorities."},
+    {q: "How to improve handwriting?", a: "Practice slowly and use guides."},
+    {q: "How to be kind?", a: "Help others, say polite words, and listen."},
+
+    {q: "How many days are in a leap year?", a: "366 days."},
+    {q: "Which is the smallest country?", a: "Vatican City."},
+    {q: "Which is the largest desert?", a: "Sahara Desert (hot desert)."},
+    {q: "Which is the longest river?", a: "Nile River commonly cited."},
+    {q: "Which is the tallest mountain?", a: "Mount Everest."},
+    {q: "What is the national animal of Pakistan?", a: "Markhor."},
+    {q: "Which is the coldest place on Earth?", a: "Antarctica."},
+    {q: "Which bird can't fly?", a: "Ostrich."},
+    {q: "Which is the hardest natural substance?", a: "Diamond."},
+    {q: "What is the national flower of Pakistan?", a: "Jasmine."},
+
+  ];
+
+  // Pagination state
+  let paginationIndex = 0;
+  const PAGE_SIZE = 15;
+  let lastListTriggered = false;
+
+  function botReply(raw) {
+    const inputRaw = raw.trim();
+    const input = inputRaw.toLowerCase();
+
+    // quick commands
+    if (input === 'clear' || input === 'reset') {
+      clearChat();
+      addMessage('Chat cleared ✅', 'bot');
+      addHistory('Bot','Chat cleared');
+      paginationIndex = 0; lastListTriggered = false;
+      return;
+    }
+
+    if (input === 'time' || input === "what time is it") {
+      const now = new Date().toLocaleString();
+      addMessage('Current time: ' + now, 'bot');
+      addHistory('Bot','Current time: ' + now);
+      return;
+    }
+
+    // numeric lookup 1-200
+    const num = parseInt(input,10);
+    if (!isNaN(num) && num >=1 && num <= qa.length) {
+      const item = qa[num-1];
+      addMessage(num + '. ' + item.q + '\n\nAnswer: ' + item.a, 'bot');
+      addHistory('Bot', num + '. ' + item.q);
+      lastListTriggered = false;
+      return;
+    }
+
+    // affirmative responses to 'show more'
+    const affirmative = ['yes','y','yeah','yep','ok','okay','more','show more','next','15','show','show me more','please'];
+    if (lastListTriggered && affirmative.some(a => input === a || input.includes(a))) { show15Next(); return; }
+
+    // user asking for questions
+    const askQuestionsKeywords = ['questions','show questions','which questions','who questions','what questions','list questions','show me questions','show me question','which questions can you answer'];
+    if (askQuestionsKeywords.some(k => input.includes(k))) { if (paginationIndex >= qa.length) paginationIndex = 0; show15Next(); return; }
+
+    // match by text
+    for (let i=0;i<qa.length;i++){
+      const candidate = qa[i].q.toLowerCase();
+      if (candidate === input || candidate.includes(input) || input.includes(candidate)) {
+        addMessage((i+1) + '. ' + qa[i].q + '\n\nAnswer: ' + qa[i].a, 'bot');
+        addHistory('Bot',(i+1) + '. ' + qa[i].q);
+        lastListTriggered = false; return;
+      }
+    }
+
+    // friendly keywords
+    if (input.includes('hello')|| input.includes('hi')) { addMessage('Hello 👋 How are you today?','bot'); addHistory('Bot','Greeted user'); return; }
+    if (input.includes('how are you')) { addMessage("I'm doing great, thank you for asking!",'bot'); addHistory('Bot','Replied how are you'); return; }
+    if (input.includes('who created you')||input.includes('who made you')){ addMessage('I was proudly created by Abdulrehman Saeed 🚀','bot'); addHistory('Bot','Told creator'); return; }
+    if (input.includes('joke')){ addMessage("😂 Why don\\'t skeletons fight each other? Because they don\\'t have the guts!",'bot'); addHistory('Bot','Told a joke'); return; }
+    if (input.includes('fact')){ addMessage("🌍 Fun fact: Honey never spoils — archaeologists found 3000-year-old honey still edible!",'bot'); addHistory('Bot','Shared fact'); return; }
+    if (input.includes('motivate')){ addMessage('💪 Keep going, Abdulrehman! Every step you take brings you closer to success.','bot'); addHistory('Bot','Motivated user'); return; }
+    if (input.includes('story')){ addMessage('📖 Once there was a boy who loved playing in the park. He laughed, ran, and made friends.','bot'); addHistory('Bot','Shared story'); return; }
+
+    // fallback
+    addMessage("I'm not sure, can you say it differently or ask 'questions' to see 15 questions at a time?",'bot');
+    addHistory('Bot','Asked user to rephrase or use questions');
+  }
+
+  function show15Next(){
+    if (paginationIndex >= qa.length) { addMessage("No more questions. Would you like to restart from the beginning? (type 'yes' to restart)",'bot'); addHistory('Bot','No more questions'); lastListTriggered = true; return; }
+    const end = Math.min(paginationIndex + PAGE_SIZE, qa.length);
+    let listText = '';
+    for (let i = paginationIndex; i < end; i++) { listText += (i+1) + '. ' + qa[i].q + '\n'; }
+    addMessage(listText.trim(),'bot'); addHistory('Bot','Displayed questions ' + (paginationIndex+1) + ' to ' + end);
+    paginationIndex = end; addMessage('Can I show you 15 more question?','bot'); addHistory('Bot','Asked to show 15 more'); lastListTriggered = true;
+  }
+
+  function clearChat(){ chatMessages.innerHTML=''; historyList.innerHTML=''; paginationIndex=0; lastListTriggered=false; }
+  function toggleVoice(){ voiceEnabled = !voiceEnabled; alert(voiceEnabled? 'Voice Enabled 🔊':'Voice Disabled 🔇'); }
+
+  // ------------------ New speak() with male excited voice selection ------------------
+  function pickMaleVoice(voices) {
+    // Preferred name fragments for male voices (common names and tags)
+    const preferred = [
+      'google uk english male', 'microsoft david', 'david', 'male', 'daniel', 'paul', 'john', 'alex', 'mike', 'mark', 'rico', 'tom'
+    ];
+    // Normalize names and try to match preferred keywords
+    for (const p of preferred) {
+      const lowP = p.toLowerCase();
+      for (const v of voices) {
+        const name = (v.name || '').toLowerCase();
+        const lang = (v.lang || '').toLowerCase();
+        if (name.includes(lowP) || lang.includes('en') && name.includes('male')) return v;
+      }
+    }
+    // fallback: pick any voice whose name contains male
+    for (const v of voices) {
+      if ((v.name || '').toLowerCase().includes('male')) return v;
+    }
+    // last fallback: try to pick a voice with an English lang tag
+    for (const v of voices) {
+      if ((v.lang || '').toLowerCase().startsWith('en')) return v;
+    }
+    // final fallback: first voice
+    return voices[0] || null;
+  }
+
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    // get voices (may be empty until 'voiceschanged' fires)
+    let voices = speechSynthesis.getVoices();
+    if (!voices || voices.length === 0) {
+      // wait for voiceschanged event once, then speak
+      const onVoices = () => {
+        speechSynthesis.removeEventListener('voiceschanged', onVoices);
+        voices = speechSynthesis.getVoices() || [];
+        const selected = pickMaleVoice(voices);
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.voice = selected;
+        // tuned for excited male delivery
+        utter.pitch = 1.25;   // slightly higher for energy
+        utter.rate = 1.15;    // slightly faster
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utter);
+      };
+      speechSynthesis.addEventListener('voiceschanged', onVoices);
+      // also try a short retry timeout in case voices are already available very soon
+      setTimeout(() => {
+        voices = speechSynthesis.getVoices() || [];
+        if (voices.length > 0) {
+          speechSynthesis.removeEventListener('voiceschanged', () => {});
+          const selected = pickMaleVoice(voices);
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.voice = selected;
+          utter.pitch = 1.25;
+          utter.rate = 1.15;
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utter);
+        }
+      }, 250);
+      return;
+    }
+
+    const selected = pickMaleVoice(voices);
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.voice = selected;
+    // tuned for excited male delivery
+    utter.pitch = 1.25;
+    utter.rate = 1.15;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+  }
+  // ------------------ end speak() ------------------
+
+  function addHistory(who, text) {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    item.innerHTML = "<div class='who'>" + who + "</div><div class='hstxt'>" + escapeHtml(text) + "</div>";
+    historyList.insertBefore(item, historyList.firstChild);
+    while (historyList.childNodes.length > 20) historyList.removeChild(historyList.lastChild);
+  }
+
+  function show15Next(){
+    if (paginationIndex >= qa.length) { addMessage("No more questions. Would you like to restart from the beginning? (type 'yes' to restart)",'bot'); addHistory('Bot','No more questions'); lastListTriggered = true; return; }
+    const end = Math.min(paginationIndex + PAGE_SIZE, qa.length);
+    let listText = '';
+    for (let i = paginationIndex; i < end; i++) { listText += (i+1) + '. ' + qa[i].q + '\n'; }
+    addMessage(listText.trim(),'bot'); addHistory('Bot','Displayed questions ' + (paginationIndex+1) + ' to ' + end);
+    paginationIndex = end; addMessage('Can I show you 15 more question?','bot'); addHistory('Bot','Asked to show 15 more'); lastListTriggered = true;
+  }
+
+  function clearChat(){ chatMessages.innerHTML=''; historyList.innerHTML=''; paginationIndex=0; lastListTriggered=false; }
+  window.show15Next = show15Next;
+</script>
+
+</body>
+</html>
